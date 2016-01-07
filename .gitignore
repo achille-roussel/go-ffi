@@ -22,3 +22,11 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+# Emacs
+*~
+\#*
+.\#*
+
+# Test coverage
+cover.out
