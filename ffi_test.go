@@ -1,6 +1,8 @@
 package ffi
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 	"unsafe"
 
@@ -74,6 +76,24 @@ func TestPrepareAndCall(t *testing.T) {
 	if res != 1 {
 		t.Error("call:", res)
 		return
+	}
+}
+
+func TestDeclare(t *testing.T) {
+	if f := Declare(unsafe.Pointer(abs), Sint, Sint); f == nil {
+		t.Error("declare:", f)
+	}
+}
+
+func TestDeclareAndCall(t *testing.T) {
+	f := Declare(unsafe.Pointer(abs), Sint, Sint).(func(int) (int, error))
+
+	fmt.Println(reflect.TypeOf(f))
+
+	if n, err := f(-1); err != nil {
+		t.Error("call:", err)
+	} else if n != 1 {
+		t.Error("call:", n)
 	}
 }
 
