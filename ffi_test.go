@@ -1,6 +1,8 @@
 package ffi
 
 import (
+	"strings"
+	"syscall"
 	"testing"
 	"unsafe"
 
@@ -8,8 +10,9 @@ import (
 )
 
 var (
-	libc dl.Library
-	abs  uintptr
+	libc     dl.Library
+	abs      uintptr
+	strerror uintptr
 )
 
 func TestStatusStringOK(t *testing.T) {
@@ -93,6 +96,23 @@ func TestCallAbs(t *testing.T) {
 	}
 }
 
+func TestCallStrerror(t *testing.T) {
+	msg := syscall.ENOENT
+	ret := ""
+	arg := int(msg)
+	err := Call(unsafe.Pointer(strerror), &ret, arg)
+
+	if err != nil {
+		t.Error("call:", err)
+		return
+	}
+
+	if strings.ToLower(ret) != msg.Error() {
+		t.Error("call:", ret)
+		return
+	}
+}
+
 func init() {
 	var err error
 
@@ -100,9 +120,8 @@ func init() {
 		panic(err)
 	}
 
-	if abs, err = libc.Symbol("abs"); err != nil {
-		panic(err)
-	}
+	abs = symbol(libc, "abs")
+	strerror = symbol(libc, "strerror")
 }
 
 func load(name string) (lib dl.Library, err error) {
@@ -114,6 +133,16 @@ func load(name string) (lib dl.Library, err error) {
 
 	if lib, err = dl.Open(path, 0); err != nil {
 		return
+	}
+
+	return
+}
+
+func symbol(lib dl.Library, name string) (addr uintptr) {
+	var err error
+
+	if addr, err = libc.Symbol(name); err != nil {
+		panic(err)
 	}
 
 	return

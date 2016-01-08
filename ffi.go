@@ -1,6 +1,7 @@
 package ffi
 
 // #include <ffi.h>
+// #include <stdint.h>
 //
 // typedef void (*function)(void);
 import "C"
@@ -73,10 +74,19 @@ func (t Type) String() string {
 	case Void:
 		return "void"
 
-	case Uchar, Uint8:
+	case Uchar:
+		return "unsigned char"
+
+	case Ushort:
+		return "unsigned short"
+
+	case Uint:
+		return "unsigned int"
+
+	case Uint8:
 		return "uint8"
 
-	case Ushort, Uint16:
+	case Uint16:
 		return "uint16"
 
 	case Uint, Uint32:
@@ -204,7 +214,53 @@ func makeRetType(v reflect.Value) Type {
 	if v.IsNil() {
 		return Void
 	}
-	return makeType(v.Elem())
+
+	switch v.Elem().Kind() {
+	case reflect.Int:
+		return Sint
+
+	case reflect.Int8:
+		return Sint8
+
+	case reflect.Int16:
+		return Sint16
+
+	case reflect.Int32:
+		return Sint32
+
+	case reflect.Int64:
+		return Sint64
+
+	case reflect.Uint:
+		return Uint
+
+	case reflect.Uint8:
+		return Uint8
+
+	case reflect.Uint16:
+		return Uint16
+
+	case reflect.Uint32:
+		return Uint32
+
+	case reflect.Uint64:
+		return Uint64
+
+	case reflect.Float32:
+		return Float
+
+	case reflect.Float64:
+		return Double
+
+	case reflect.String:
+		return Pointer
+
+	case reflect.UnsafePointer:
+		return Pointer
+	}
+
+	unsupportedType(v)
+	return Type{}
 }
 
 func makeRetValue(v reflect.Value) unsafe.Pointer {
@@ -238,6 +294,42 @@ func makeType(v reflect.Value) Type {
 	switch v.Kind() {
 	case reflect.Int:
 		return Sint
+
+	case reflect.Int8:
+		return Sint8
+
+	case reflect.Int16:
+		return Sint16
+
+	case reflect.Int32:
+		return Sint32
+
+	case reflect.Int64:
+		return Sint64
+
+	case reflect.Uint:
+		return Uint
+
+	case reflect.Uint8:
+		return Uint8
+
+	case reflect.Uint16:
+		return Uint16
+
+	case reflect.Uint32:
+		return Uint32
+
+	case reflect.Uint64:
+		return Uint64
+
+	case reflect.Float32:
+		return Float
+
+	case reflect.Float64:
+		return Double
+
+	case reflect.String, reflect.Slice, reflect.Ptr, reflect.UnsafePointer, reflect.Interface:
+		return Pointer
 	}
 
 	unsupportedType(v)
@@ -249,6 +341,57 @@ func makeValue(v reflect.Value) unsafe.Pointer {
 	case reflect.Int:
 		x := C.int(v.Int())
 		return unsafe.Pointer(&x)
+
+	case reflect.Int8:
+		x := C.int8_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int16:
+		x := C.int16_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int32:
+		x := C.int32_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int64:
+		x := C.int64_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint8:
+		x := C.uint8_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint16:
+		x := C.uint16_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint32:
+		x := C.uint32_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint64:
+		x := C.uint64_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Float32:
+		x := C.float(v.Float())
+		return unsafe.Pointer(&x)
+
+	case reflect.Float64:
+		x := C.double(v.Float())
+		return unsafe.Pointer(&x)
+
+	case reflect.String:
+		return unsafe.Pointer(C.CString(v.String()))
+
+	case reflect.Slice, reflect.Ptr, reflect.UnsafePointer:
+		return unsafe.Pointer(v.Pointer())
+
+	case reflect.Interface:
+		if v.IsNil() {
+			return nil
+		}
 	}
 
 	unsupportedType(v)
@@ -259,6 +402,45 @@ func setRetValue(v reflect.Value, p unsafe.Pointer) {
 	switch v = v.Elem(); v.Kind() {
 	case reflect.Int:
 		v.SetInt(int64(*((*C.int)(p))))
+
+	case reflect.Int8:
+		v.SetInt(int64(*(*C.int8_t)(p)))
+
+	case reflect.Int16:
+		v.SetInt(int64(*(*C.int16_t)(p)))
+
+	case reflect.Int32:
+		v.SetInt(int64(*(*C.int32_t)(p)))
+
+	case reflect.Int64:
+		v.SetInt(int64(*(*C.int64_t)(p)))
+
+	case reflect.Uint:
+		v.SetUint(uint64(*((*C.uint)(p))))
+
+	case reflect.Uint8:
+		v.SetUint(uint64(*(*C.uint8_t)(p)))
+
+	case reflect.Uint16:
+		v.SetUint(uint64(*(*C.uint16_t)(p)))
+
+	case reflect.Uint32:
+		v.SetUint(uint64(*(*C.uint32_t)(p)))
+
+	case reflect.Uint64:
+		v.SetUint(uint64(*(*C.uint64_t)(p)))
+
+	case reflect.Float32:
+		v.SetFloat(float64(*(*C.float)(p)))
+
+	case reflect.Float64:
+		v.SetFloat(float64(*(*C.double)(p)))
+
+	case reflect.String:
+		v.SetString(C.GoString(*(**C.char)(p)))
+
+	case reflect.UnsafePointer:
+		v.SetPointer(p)
 	}
 }
 
