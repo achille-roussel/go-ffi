@@ -38,86 +38,43 @@ func (s Status) Error() string {
 
 type Type struct {
 	ffi_type *C.ffi_type
+	name     string
 }
 
 var (
-	Void Type = Type{&C.ffi_type_void}
+	Void Type = Type{&C.ffi_type_void, "void"}
 
-	Uchar  Type = Type{&C.ffi_type_schar}
-	Ushort Type = Type{&C.ffi_type_sshort}
-	Uint   Type = Type{&C.ffi_type_sint}
-	Ulong  Type = Type{&C.ffi_type_slong}
+	UChar  Type = Type{&C.ffi_type_uchar, "unsigned char"}
+	UShort Type = Type{&C.ffi_type_ushort, "unsigned short"}
+	UInt   Type = Type{&C.ffi_type_uint, "unsigned int"}
+	ULong  Type = Type{&C.ffi_type_ulong, "unsigned long"}
 
-	Uint8  Type = Type{&C.ffi_type_uint8}
-	Uint16 Type = Type{&C.ffi_type_uint16}
-	Uint32 Type = Type{&C.ffi_type_uint32}
-	Uint64 Type = Type{&C.ffi_type_uint64}
+	UInt8  Type = Type{&C.ffi_type_uint8, "uint8_t"}
+	UInt16 Type = Type{&C.ffi_type_uint16, "uint16_t"}
+	UInt32 Type = Type{&C.ffi_type_uint32, "uint32_t"}
+	UInt64 Type = Type{&C.ffi_type_uint64, "uint64_t"}
 
-	Schar  Type = Type{&C.ffi_type_schar}
-	Sshort Type = Type{&C.ffi_type_sshort}
-	Sint   Type = Type{&C.ffi_type_sint}
-	SLong  Type = Type{&C.ffi_type_slong}
+	Char  Type = Type{&C.ffi_type_schar, "char"}
+	Short Type = Type{&C.ffi_type_sshort, "short"}
+	Int   Type = Type{&C.ffi_type_sint, "int"}
+	Long  Type = Type{&C.ffi_type_slong, "long"}
 
-	Sint8  Type = Type{&C.ffi_type_uint8}
-	Sint16 Type = Type{&C.ffi_type_uint16}
-	Sint32 Type = Type{&C.ffi_type_uint32}
-	Sint64 Type = Type{&C.ffi_type_uint64}
+	Int8  Type = Type{&C.ffi_type_sint8, "int8_t"}
+	Int16 Type = Type{&C.ffi_type_sint16, "int16_t"}
+	Int32 Type = Type{&C.ffi_type_sint32, "int32_t"}
+	Int64 Type = Type{&C.ffi_type_sint64, "int64_t"}
 
-	Float  Type = Type{&C.ffi_type_float}
-	Double Type = Type{&C.ffi_type_double}
+	Float  Type = Type{&C.ffi_type_float, "float"}
+	Double Type = Type{&C.ffi_type_double, "double"}
 
-	Pointer Type = Type{&C.ffi_type_pointer}
+	Pointer Type = Type{&C.ffi_type_pointer, "pointer"}
 )
 
 func (t Type) String() string {
-	switch t {
-	case Void:
-		return "void"
-
-	case Uchar:
-		return "unsigned char"
-
-	case Ushort:
-		return "unsigned short"
-
-	case Uint:
-		return "unsigned int"
-
-	case Uint8:
-		return "uint8"
-
-	case Uint16:
-		return "uint16"
-
-	case Uint, Uint32:
-		return "uint32"
-
-	case Ulong, Uint64:
-		return "uint64"
-
-	case Schar, Sint8:
-		return "uint8"
-
-	case Sshort, Sint16:
-		return "uint16"
-
-	case Sint, Sint32:
-		return "uint32"
-
-	case SLong, Sint64:
-		return "uint64"
-
-	case Float:
-		return "float32"
-
-	case Double:
-		return "float64"
-
-	case Pointer:
-		return "pointer"
-
-	default:
+	if len(t.name) == 0 {
 		return "struct"
+	} else {
+		return t.name
 	}
 }
 
@@ -217,34 +174,34 @@ func makeRetType(v reflect.Value) Type {
 
 	switch v.Elem().Kind() {
 	case reflect.Int:
-		return Sint
+		return Int
 
 	case reflect.Int8:
-		return Sint8
+		return Int8
 
 	case reflect.Int16:
-		return Sint16
+		return Int16
 
 	case reflect.Int32:
-		return Sint32
+		return Int32
 
 	case reflect.Int64:
-		return Sint64
+		return Int64
 
 	case reflect.Uint:
-		return Uint
+		return UInt
 
 	case reflect.Uint8:
-		return Uint8
+		return UInt8
 
 	case reflect.Uint16:
-		return Uint16
+		return UInt16
 
 	case reflect.Uint32:
-		return Uint32
+		return UInt32
 
 	case reflect.Uint64:
-		return Uint64
+		return UInt64
 
 	case reflect.Float32:
 		return Float
@@ -252,14 +209,11 @@ func makeRetType(v reflect.Value) Type {
 	case reflect.Float64:
 		return Double
 
-	case reflect.String:
-		return Pointer
-
-	case reflect.UnsafePointer:
+	case reflect.String, reflect.Ptr, reflect.UnsafePointer:
 		return Pointer
 	}
 
-	unsupportedType(v)
+	unsupportedRetType(v)
 	return Type{}
 }
 
@@ -267,14 +221,66 @@ func makeRetValue(v reflect.Value) unsafe.Pointer {
 	if v.IsNil() {
 		return nil
 	}
-	return makeValue(v.Elem())
+
+	switch v = v.Elem(); v.Kind() {
+	case reflect.Int:
+		x := C.int(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int8:
+		x := C.int8_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int16:
+		x := C.int16_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int32:
+		x := C.int32_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Int64:
+		x := C.int64_t(v.Int())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint8:
+		x := C.uint8_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint16:
+		x := C.uint16_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint32:
+		x := C.uint32_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uint64:
+		x := C.uint64_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Float32:
+		x := C.float(v.Float())
+		return unsafe.Pointer(&x)
+
+	case reflect.Float64:
+		x := C.double(v.Float())
+		return unsafe.Pointer(&x)
+
+	case reflect.String, reflect.Ptr, reflect.UnsafePointer:
+		x := unsafe.Pointer(nil)
+		return unsafe.Pointer(&x)
+	}
+
+	unsupportedRetType(v)
+	return nil
 }
 
 func makeArgTypes(v []reflect.Value) []Type {
 	t := make([]Type, len(v))
 
 	for i, a := range v {
-		t[i] = makeType(a)
+		t[i] = makeArgType(a)
 	}
 
 	return t
@@ -284,43 +290,43 @@ func makeArgValues(v []reflect.Value) []unsafe.Pointer {
 	p := make([]unsafe.Pointer, len(v))
 
 	for i, a := range v {
-		p[i] = makeValue(a)
+		p[i] = makeArgValue(a)
 	}
 
 	return p
 }
 
-func makeType(v reflect.Value) Type {
+func makeArgType(v reflect.Value) Type {
 	switch v.Kind() {
 	case reflect.Int:
-		return Sint
+		return Int
 
 	case reflect.Int8:
-		return Sint8
+		return Int8
 
 	case reflect.Int16:
-		return Sint16
+		return Int16
 
 	case reflect.Int32:
-		return Sint32
+		return Int32
 
 	case reflect.Int64:
-		return Sint64
+		return Int64
 
 	case reflect.Uint:
-		return Uint
+		return UInt
 
 	case reflect.Uint8:
-		return Uint8
+		return UInt8
 
 	case reflect.Uint16:
-		return Uint16
+		return UInt16
 
 	case reflect.Uint32:
-		return Uint32
+		return UInt32
 
 	case reflect.Uint64:
-		return Uint64
+		return UInt64
 
 	case reflect.Float32:
 		return Float
@@ -332,11 +338,11 @@ func makeType(v reflect.Value) Type {
 		return Pointer
 	}
 
-	unsupportedType(v)
+	unsupportedArgType(v)
 	return Type{}
 }
 
-func makeValue(v reflect.Value) unsafe.Pointer {
+func makeArgValue(v reflect.Value) unsafe.Pointer {
 	switch v.Kind() {
 	case reflect.Int:
 		x := C.int(v.Int())
@@ -394,7 +400,7 @@ func makeValue(v reflect.Value) unsafe.Pointer {
 		}
 	}
 
-	unsupportedType(v)
+	unsupportedArgType(v)
 	return nil
 }
 
@@ -439,11 +445,15 @@ func setRetValue(v reflect.Value, p unsafe.Pointer) {
 	case reflect.String:
 		v.SetString(C.GoString(*(**C.char)(p)))
 
-	case reflect.UnsafePointer:
-		v.SetPointer(p)
+	case reflect.UnsafePointer, reflect.Ptr:
+		v.SetPointer(*(*unsafe.Pointer)(p))
 	}
 }
 
-func unsupportedType(v reflect.Value) {
-	panic(fmt.Sprintf("ffi: unsupported type: %s", v.Type()))
+func unsupportedArgType(v reflect.Value) {
+	panic(fmt.Sprintf("ffi: unsupported argument type: %s", v.Type()))
+}
+
+func unsupportedRetType(v reflect.Value) {
+	panic(fmt.Sprintf("ffi: unsupported return type: %s", v.Type()))
 }

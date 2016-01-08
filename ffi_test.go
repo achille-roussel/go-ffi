@@ -15,6 +15,96 @@ var (
 	strerror uintptr
 )
 
+func TestVoidTypeString(t *testing.T) {
+	testTypeString(t, Void, "void")
+}
+
+func TestCharTypeString(t *testing.T) {
+	testTypeString(t, Char, "char")
+}
+
+func TestShortTypeString(t *testing.T) {
+	testTypeString(t, Short, "short")
+}
+
+func TestIntTypeString(t *testing.T) {
+	testTypeString(t, Int, "int")
+}
+
+func TestLongTypeString(t *testing.T) {
+	testTypeString(t, Long, "long")
+}
+
+func TestUCharTypeString(t *testing.T) {
+	testTypeString(t, UChar, "unsigned char")
+}
+
+func TestUShortTypeString(t *testing.T) {
+	testTypeString(t, UShort, "unsigned short")
+}
+
+func TestUIntTypeString(t *testing.T) {
+	testTypeString(t, UInt, "unsigned int")
+}
+
+func TestULongTypeString(t *testing.T) {
+	testTypeString(t, ULong, "unsigned long")
+}
+
+func TestFloatTypeString(t *testing.T) {
+	testTypeString(t, Float, "float")
+}
+
+func TestDoubleTypeString(t *testing.T) {
+	testTypeString(t, Double, "double")
+}
+
+func TestInt8TypeString(t *testing.T) {
+	testTypeString(t, Int8, "int8_t")
+}
+
+func TestInt16TypeString(t *testing.T) {
+	testTypeString(t, Int16, "int16_t")
+}
+
+func TestInt32TypeString(t *testing.T) {
+	testTypeString(t, Int32, "int32_t")
+}
+
+func TestInt64TypeString(t *testing.T) {
+	testTypeString(t, Int64, "int64_t")
+}
+
+func TestUInt8TypeString(t *testing.T) {
+	testTypeString(t, UInt8, "uint8_t")
+}
+
+func TestUInt16TypeString(t *testing.T) {
+	testTypeString(t, UInt16, "uint16_t")
+}
+
+func TestUInt32TypeString(t *testing.T) {
+	testTypeString(t, UInt32, "uint32_t")
+}
+
+func TestUInt64TypeString(t *testing.T) {
+	testTypeString(t, UInt64, "uint64_t")
+}
+
+func TestPointerTypeString(t *testing.T) {
+	testTypeString(t, Pointer, "pointer")
+}
+
+func TestDefaultTypeString(t *testing.T) {
+	testTypeString(t, Type{}, "struct")
+}
+
+func testTypeString(t *testing.T, x Type, s string) {
+	if x.String() != s {
+		t.Errorf("invalid type string: %s != %s", x, s)
+	}
+}
+
 func TestStatusStringOK(t *testing.T) {
 	if s := OK.String(); s != "OK" {
 		t.Error("invalid status string:", s)
@@ -29,6 +119,12 @@ func TestStatusStringBadTypedef(t *testing.T) {
 
 func TestStatusStringBadABI(t *testing.T) {
 	if s := BadABI.String(); s != "bad-ABI" {
+		t.Error("invalid status string:", s)
+	}
+}
+
+func TestStatusStringDefault(t *testing.T) {
+	if s := Status(-1).String(); s != "unknown" {
 		t.Error("invalid status string:", s)
 	}
 }
@@ -51,6 +147,12 @@ func TestStatusErrorBadABI(t *testing.T) {
 	}
 }
 
+func TestStatusErrorDefault(t *testing.T) {
+	if s := Status(-1).Error(); s != "status: unknown" {
+		t.Error("invalid status string:", s)
+	}
+}
+
 func TestPrepareVoid(t *testing.T) {
 	if _, err := Prepare(Void); err != nil {
 		t.Error(err)
@@ -61,7 +163,7 @@ func TestPrepareAndCall(t *testing.T) {
 	var cif Interface
 	var err error
 
-	if cif, err = Prepare(Sint, Sint); err != nil {
+	if cif, err = Prepare(Int, Int); err != nil {
 		t.Error("prepare:", err)
 		return
 	}
@@ -96,7 +198,7 @@ func TestCallAbs(t *testing.T) {
 	}
 }
 
-func TestCallStrerror(t *testing.T) {
+func TestCallStrerrorReturnString(t *testing.T) {
 	msg := syscall.ENOENT
 	ret := ""
 	arg := int(msg)
@@ -111,6 +213,62 @@ func TestCallStrerror(t *testing.T) {
 		t.Error("call:", ret)
 		return
 	}
+}
+
+func TestCallStrerrorReturnPointer(t *testing.T) {
+	msg := syscall.ENOENT
+	ret := unsafe.Pointer(nil)
+	arg := int(msg)
+	err := Call(unsafe.Pointer(strerror), &ret, arg)
+
+	if err != nil {
+		t.Error("call:", err)
+		return
+	}
+
+	if ret == nil {
+		t.Error("call:", ret)
+		return
+	}
+}
+
+func TestCallInvalidReturnTypeNonPointer(t *testing.T) {
+	defer func() {
+		recover()
+	}()
+
+	ret := 0
+	arg := -1
+
+	Call(unsafe.Pointer(abs), ret, arg)
+
+	t.Error("unreachable: non-pointer return value should have caused ffi.Call to panic")
+}
+
+func TestCallInvalidReturnTypeWrongPointer(t *testing.T) {
+	defer func() {
+		recover()
+	}()
+
+	ret := func() {}
+	arg := -1
+
+	Call(unsafe.Pointer(abs), &ret, arg)
+
+	t.Error("unreachable: function pointer return value should have caused ffi.Call to panic")
+}
+
+func TestCallInvalidArgumentTypeWrongValue(t *testing.T) {
+	defer func() {
+		recover()
+	}()
+
+	ret := 0
+	arg := func() {}
+
+	Call(unsafe.Pointer(abs), &ret, arg)
+
+	t.Error("unreachable: function argument should have caused ffi.Call to panic")
 }
 
 func init() {
