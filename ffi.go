@@ -111,11 +111,7 @@ func (t Type) String() string {
 	}
 }
 
-type Interface interface {
-	Call(fptr unsafe.Pointer, ret unsafe.Pointer, args ...unsafe.Pointer) error
-}
-
-type ffi_cif struct {
+type Interface struct {
 	ffi_cif  C.ffi_cif
 	ffi_ret  *C.ffi_type
 	ffi_args **C.ffi_type
@@ -124,14 +120,20 @@ type ffi_cif struct {
 	args []Type
 }
 
-func Prepare(ret Type, args ...Type) (Interface, error) {
-	cif := ffi_cif{
-		ffi_ret: ret.ffi_type,
+func MustPrepare(ret Type, args ...Type) (cif Interface) {
+	var err error
 
-		ret:  ret,
-		args: args,
+	if cif, err = Prepare(ret, args...); err != nil {
+		panic(err)
 	}
 
+	return
+}
+
+func Prepare(ret Type, args ...Type) (cif Interface, err error) {
+	cif.ffi_ret = ret.ffi_type
+	cif.ret = ret
+	cif.args = args
 	argc := len(args)
 
 	if argc != 0 {
@@ -145,13 +147,13 @@ func Prepare(ret Type, args ...Type) (Interface, error) {
 	}
 
 	if status := Status(C.ffi_prep_cif(&cif.ffi_cif, C.FFI_DEFAULT_ABI, C.uint(argc), cif.ffi_ret, cif.ffi_args)); status != OK {
-		return nil, status
+		err = status
 	}
 
-	return cif, nil
+	return
 }
 
-func (cif ffi_cif) Call(fptr unsafe.Pointer, ret unsafe.Pointer, args ...unsafe.Pointer) (err error) {
+func (cif Interface) Call(fptr unsafe.Pointer, ret unsafe.Pointer, args ...unsafe.Pointer) (err error) {
 	var va *unsafe.Pointer
 
 	if len(args) != 0 {
@@ -162,167 +164,104 @@ func (cif ffi_cif) Call(fptr unsafe.Pointer, ret unsafe.Pointer, args ...unsafe.
 	return
 }
 
-func Declare(fptr unsafe.Pointer, ret Type, args ...Type) interface{} {
-	var cif Interface
-	var err error
+func Call(fptr unsafe.Pointer, ret interface{}, args ...interface{}) (err error) {
+	vret := valueOfRet(ret)
+	varg := valueOfArgs(args)
 
-	if cif, err = Prepare(ret, args...); err != nil {
-		panic(err)
-	}
+	rett := makeRetType(vret)
+	retv := makeRetValue(vret)
 
-	size := callSizeOf(ret, args)
-	sig := signatureOf(ret, args)
+	argt := makeArgTypes(varg)
+	argv := makeArgValues(varg)
 
-	fun := func(argv []reflect.Value) (res []reflect.Value) {
-		alloc := makeAllocator(size)
+	err = MustPrepare(rett, argt...).Call(fptr, retv, argv...)
 
-		vr := alloc.allocate(sizeOf(ret))
-		va := makeArgs(argv, args, &alloc)
-		defer freeArgs(argv, va)
-
-		// err := cif.Call(fptr, vr, va...)
-		var err error
-		_ = cif
-
-		switch sig.NumOut() {
-		case 1:
-			res = []reflect.Value{reflect.ValueOf(err)}
-		default:
-			res = []reflect.Value{makeRet(sig.Out(0), vr), reflect.ValueOf(err)}
-		}
-
-		return
-	}
-
-	return reflect.MakeFunc(sig, fun).Interface()
+	setRetValue(vret, retv)
+	return
 }
 
-func signatureOf(ret Type, args []Type) reflect.Type {
-	return reflect.FuncOf(argsTypeOf(args), retTypeOf(ret), false)
+func valueOfRet(ret interface{}) reflect.Value {
+	v := reflect.ValueOf(ret)
+
+	if ret != nil && v.Kind() != reflect.Ptr {
+		panic(fmt.Sprintf("ffi: expected return value to be a pointer but got %T", ret))
+	}
+
+	return v
 }
 
-func argsTypeOf(args []Type) []reflect.Type {
-	var ts = make([]reflect.Type, len(args))
+func valueOfArgs(args []interface{}) []reflect.Value {
+	v := make([]reflect.Value, len(args))
 
 	for i, a := range args {
-		ts[i] = typeOf(a)
+		v[i] = reflect.ValueOf(a)
 	}
 
-	return ts
+	return v
 }
 
-func retTypeOf(ret Type) []reflect.Type {
-	var err error
-	var ts = make([]reflect.Type, 0, 2)
-
-	if t := typeOf(ret); t != nil {
-		ts = append(ts, t)
+func makeRetType(v reflect.Value) Type {
+	if v.IsNil() {
+		return Void
 	}
-
-	return append(ts, reflect.TypeOf(&err).Elem())
+	return makeType(v.Elem())
 }
 
-func typeOf(t Type) reflect.Type {
-	switch t {
-	case Void:
+func makeRetValue(v reflect.Value) unsafe.Pointer {
+	if v.IsNil() {
 		return nil
-
-	case Sint:
-		return reflect.TypeOf(int(0))
-
-		// TODO: add more types
-	default:
-		panic(fmt.Sprintf("ffi: unsupported type: %#v", t))
 	}
+	return makeValue(v.Elem())
 }
 
-func callSizeOf(ret Type, args []Type) int {
-	size := sizeOf(ret)
+func makeArgTypes(v []reflect.Value) []Type {
+	t := make([]Type, len(v))
 
-	for _, a := range args {
-		size += sizeOf(a)
+	for i, a := range v {
+		t[i] = makeType(a)
 	}
 
-	return size
+	return t
 }
 
-func sizeOf(t Type) int {
-	return align(int(t.ffi_type.size), int(t.ffi_type.alignment))
-}
+func makeArgValues(v []reflect.Value) []unsafe.Pointer {
+	p := make([]unsafe.Pointer, len(v))
 
-func align(size int, alignment int) int {
-	n := size / alignment
-
-	if (size % alignment) != 0 {
-		n++
-	}
-
-	return n
-}
-
-func makeArgs(argv []reflect.Value, args []Type, alloc *allocator) []unsafe.Pointer {
-	va := make([]unsafe.Pointer, len(args))
-
-	for i, a := range args {
-		va[i] = makeArg(argv[i], alloc.allocate(sizeOf(a)))
-	}
-
-	return va
-}
-
-func makeArg(v reflect.Value, p unsafe.Pointer) unsafe.Pointer {
-	switch v.Kind() {
-	case reflect.Int:
-		*((*C.int)(p)) = C.int(v.Int())
-
-		// TODO: add more types
-	default:
-		panic("ffi: an unreachble portion of code is executed: mismatched argument types between Go and C")
+	for i, a := range v {
+		p[i] = makeValue(a)
 	}
 
 	return p
 }
 
-func freeArgs(argv []reflect.Value, va []unsafe.Pointer) {
-	for i, v := range argv {
-		freeArg(v, va[i])
+func makeType(v reflect.Value) Type {
+	switch v.Kind() {
+	case reflect.Int:
+		return Sint
 	}
+
+	unsupportedType(v)
+	return Type{}
 }
 
-func freeArg(v reflect.Value, p unsafe.Pointer) {
-	// TODO: free if necessary
+func makeValue(v reflect.Value) unsafe.Pointer {
+	switch v.Kind() {
+	case reflect.Int:
+		x := C.int(v.Int())
+		return unsafe.Pointer(&x)
+	}
+
+	unsupportedType(v)
+	return nil
 }
 
-func makeRet(t reflect.Type, p unsafe.Pointer) (v reflect.Value) {
-	v = reflect.New(t).Elem()
-
-	switch t.Kind() {
+func setRetValue(v reflect.Value, p unsafe.Pointer) {
+	switch v = v.Elem(); v.Kind() {
 	case reflect.Int:
 		v.SetInt(int64(*((*C.int)(p))))
-
-		// TODO: add more types
-	default:
-		panic("ffi: an unreachble portion of code is executed: mismatched argument types between Go and C")
 	}
-
-	return
 }
 
-type allocator struct {
-	bytes []byte
-	addr  uintptr
-}
-
-func makeAllocator(n int) (a allocator) {
-	if n != 0 {
-		a.bytes = make([]byte, n)
-		a.addr = uintptr(unsafe.Pointer(&a.bytes[0]))
-	}
-	return
-}
-
-func (a *allocator) allocate(n int) unsafe.Pointer {
-	ptr := unsafe.Pointer(a.addr)
-	a.addr += uintptr(n)
-	return ptr
+func unsupportedType(v reflect.Value) {
+	panic(fmt.Sprintf("ffi: unsupported type: %s", v.Type()))
 }

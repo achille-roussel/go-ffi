@@ -1,8 +1,6 @@
 package ffi
 
 import (
-	"fmt"
-	"reflect"
 	"testing"
 	"unsafe"
 
@@ -65,35 +63,33 @@ func TestPrepareAndCall(t *testing.T) {
 		return
 	}
 
-	var arg int32 = -1
-	var res int32
+	ret := 0
+	arg := -1
 
-	if err = cif.Call(unsafe.Pointer(abs), unsafe.Pointer(&res), unsafe.Pointer(&arg)); err != nil {
+	if err = cif.Call(unsafe.Pointer(abs), unsafe.Pointer(&ret), unsafe.Pointer(&arg)); err != nil {
 		t.Error("call:", err)
 		return
 	}
 
-	if res != 1 {
-		t.Error("call:", res)
+	if ret != 1 {
+		t.Error("call:", ret)
 		return
 	}
 }
 
-func TestDeclare(t *testing.T) {
-	if f := Declare(unsafe.Pointer(abs), Sint, Sint); f == nil {
-		t.Error("declare:", f)
-	}
-}
+func TestCallAbs(t *testing.T) {
+	ret := 0
+	arg := -1
+	err := Call(unsafe.Pointer(abs), &ret, arg)
 
-func TestDeclareAndCall(t *testing.T) {
-	f := Declare(unsafe.Pointer(abs), Sint, Sint).(func(int) (int, error))
-
-	fmt.Println(reflect.TypeOf(f))
-
-	if n, err := f(-1); err != nil {
+	if err != nil {
 		t.Error("call:", err)
-	} else if n != 1 {
-		t.Error("call:", n)
+		return
+	}
+
+	if ret != 1 {
+		t.Error("call:", ret)
+		return
 	}
 }
 
