@@ -1,6 +1,7 @@
 package ffi
 
 import (
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -271,7 +272,7 @@ func TestCallInvalidArgumentTypeWrongValue(t *testing.T) {
 	t.Error("unreachable: function argument should have caused ffi.Call to panic")
 }
 
-func TestCreateClosure(t *testing.T) {
+func TestCreateAbsClosure(t *testing.T) {
 	abs := Closure(func(x int) int {
 		if x < 0 {
 			return -x
@@ -286,7 +287,17 @@ func TestCreateClosure(t *testing.T) {
 	}
 }
 
-func TestCallClosure(t *testing.T) {
+func TestCreateItoaClosure(t *testing.T) {
+	itoa := Closure(strconv.Itoa)
+
+	if itoa == nil {
+		t.Error("closure:", itoa)
+	} else if itoa.Pointer() == 0 {
+		t.Error("closure: null pointer")
+	}
+}
+
+func TestCallAbsClosure(t *testing.T) {
 	val := 0
 
 	abs := Closure(func(x int) int {
@@ -313,6 +324,22 @@ func TestCallClosure(t *testing.T) {
 
 	if val != 42 {
 		t.Error("closure: invalid value of out-of-scope variable:", val)
+	}
+}
+
+func TestCallItoaClosure(t *testing.T) {
+	itoa := Closure(strconv.Itoa)
+
+	res := ""
+	arg := 42
+	err := Call(unsafe.Pointer(itoa.Pointer()), &res, arg)
+
+	if err != nil {
+		t.Error("closure:", err)
+	}
+
+	if res != "42" {
+		t.Error("closure: invalid returned value:", res)
 	}
 }
 
