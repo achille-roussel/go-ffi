@@ -1,6 +1,7 @@
 package ffi
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"syscall"
@@ -12,7 +13,11 @@ import (
 
 var (
 	libc     dl.Library
+	libm     dl.Library
 	abs      uintptr
+	fabs     uintptr
+	fabsf    uintptr
+	snprintf uintptr
 	strerror uintptr
 )
 
@@ -93,7 +98,7 @@ func TestUInt64TypeString(t *testing.T) {
 }
 
 func TestPointerTypeString(t *testing.T) {
-	testTypeString(t, Pointer, "pointer")
+	testTypeString(t, Pointer, "void *")
 }
 
 func TestDefaultTypeString(t *testing.T) {
@@ -183,19 +188,53 @@ func TestPrepareAndCall(t *testing.T) {
 	}
 }
 
+func TestInterfaceString(t *testing.T) {
+	if s := MustPrepare(Void, Pointer, Int).String(); s != "void(*)(void *, int)" {
+		t.Error("invalid string representation of call interface:", s)
+	}
+}
+
 func TestCallAbs(t *testing.T) {
 	ret := 0
 	arg := -1
 	err := Call(unsafe.Pointer(abs), &ret, arg)
 
 	if err != nil {
-		t.Error("call:", err)
+		t.Error("abs:", err)
 		return
 	}
 
 	if ret != 1 {
-		t.Error("call:", ret)
+		t.Error("abs:", ret)
 		return
+	}
+}
+
+func TestCallFabs(t *testing.T) {
+	res := float64(0.0)
+	arg := float64(-0.5)
+	err := Call(unsafe.Pointer(fabs), &res, arg)
+
+	if err != nil {
+		t.Error("fabs:", err)
+	}
+
+	if res != 0.5 {
+		t.Error("fabs:", res)
+	}
+}
+
+func TestCallFabsf(t *testing.T) {
+	res := float32(0.0)
+	arg := float32(-0.5)
+	err := Call(unsafe.Pointer(fabsf), &res, arg)
+
+	if err != nil {
+		t.Error("fabsf:", err)
+	}
+
+	if res != 0.5 {
+		t.Error("fabsf:", res)
 	}
 }
 
@@ -206,12 +245,12 @@ func TestCallStrerrorReturnString(t *testing.T) {
 	err := Call(unsafe.Pointer(strerror), &ret, arg)
 
 	if err != nil {
-		t.Error("call:", err)
+		t.Error("strerror:", err)
 		return
 	}
 
 	if strings.ToLower(ret) != msg.Error() {
-		t.Error("call:", ret)
+		t.Error("strerror:", ret)
 		return
 	}
 }
@@ -223,12 +262,12 @@ func TestCallStrerrorReturnPointer(t *testing.T) {
 	err := Call(unsafe.Pointer(strerror), &ret, arg)
 
 	if err != nil {
-		t.Error("call:", err)
+		t.Error("strerror:", err)
 		return
 	}
 
 	if ret == nil {
-		t.Error("call:", ret)
+		t.Error("strerror:", ret)
 		return
 	}
 }
@@ -270,6 +309,73 @@ func TestCallInvalidArgumentTypeWrongValue(t *testing.T) {
 	Call(unsafe.Pointer(abs), &ret, arg)
 
 	t.Error("unreachable: function argument should have caused ffi.Call to panic")
+}
+
+func TestCallSnprintfInt(t *testing.T) {
+	testCallSnprintf(t, "%d", int(42))
+}
+
+func TestCallSnprintfInt8(t *testing.T) {
+	testCallSnprintf(t, "%d", int8(42))
+}
+
+func TestCallSnprintfInt16(t *testing.T) {
+	testCallSnprintf(t, "%d", int16(42))
+}
+
+func TestCallSnprintfInt32(t *testing.T) {
+	testCallSnprintf(t, "%d", int32(42))
+}
+
+func TestCallSnprintfInt64(t *testing.T) {
+	testCallSnprintf(t, "%ld", int64(42))
+}
+
+func TestCallSnprintfUint(t *testing.T) {
+	testCallSnprintf(t, "%u", uint(42))
+}
+
+func TestCallSnprintfUint8(t *testing.T) {
+	testCallSnprintf(t, "%u", uint8(42))
+}
+
+func TestCallSnprintfUint16(t *testing.T) {
+	testCallSnprintf(t, "%u", uint16(42))
+}
+
+func TestCallSnprintfUint32(t *testing.T) {
+	testCallSnprintf(t, "%u", uint32(42))
+}
+
+func TestCallSnprintfUint64(t *testing.T) {
+	testCallSnprintf(t, "%lu", uint64(42))
+}
+
+func TestCallSnprintfFloat64(t *testing.T) {
+	testCallSnprintf(t, "%g", float64(42))
+}
+
+func TestCallSnprintfString(t *testing.T) {
+	testCallSnprintf(t, "%s", "Hello World!")
+}
+
+func testCallSnprintf(t *testing.T, f string, v interface{}) {
+	buf := make([]byte, 128)
+	res := 0
+	err := Call(unsafe.Pointer(snprintf), &res, &buf[0], uintptr(len(buf)), f, v)
+	ref := fmt.Sprint(v)
+
+	if err != nil {
+		t.Error("snprintf:", err)
+	}
+
+	if res != len(ref) {
+		t.Error("snprintf: invalid return value:", res, "!=", len(ref))
+	}
+
+	if s := string(buf[:res]); s != ref {
+		t.Error("snprintf: invalid formatted string:", s, "!=", ref)
+	}
 }
 
 func TestCreateAbsClosure(t *testing.T) {
@@ -350,7 +456,14 @@ func init() {
 		panic(err)
 	}
 
+	if libm, err = load("libm"); err != nil {
+		panic(err)
+	}
+
 	abs = symbol(libc, "abs")
+	fabs = symbol(libm, "fabs")
+	fabsf = symbol(libm, "fabsf")
+	snprintf = symbol(libc, "snprintf")
 	strerror = symbol(libc, "strerror")
 }
 

@@ -8,6 +8,7 @@ package ffi
 import "C"
 import (
 	"fmt"
+	"io"
 	"reflect"
 	"runtime"
 	"unsafe"
@@ -69,7 +70,7 @@ var (
 	Float  Type = Type{&C.ffi_type_float, "float"}
 	Double Type = Type{&C.ffi_type_double, "double"}
 
-	Pointer Type = Type{&C.ffi_type_pointer, "pointer"}
+	Pointer Type = Type{&C.ffi_type_pointer, "void *"}
 )
 
 func (t Type) String() string {
@@ -131,6 +132,24 @@ func (cif Interface) Call(fptr unsafe.Pointer, ret unsafe.Pointer, args ...unsaf
 
 	_, err = C.ffi_call(&cif.ffi_cif, C.function(fptr), ret, va)
 	return
+}
+
+func (self Interface) String() string {
+	return fmt.Sprint(self)
+}
+
+func (self Interface) Format(f fmt.State, r rune) {
+	fmt.Fprint(f, self.ret)
+	io.WriteString(f, "(*)(")
+
+	for i, arg := range self.args {
+		if i != 0 {
+			io.WriteString(f, ", ")
+		}
+		fmt.Fprint(f, arg)
+	}
+
+	io.WriteString(f, ")")
 }
 
 func Call(fptr unsafe.Pointer, ret interface{}, args ...interface{}) (err error) {
@@ -292,6 +311,9 @@ func makeGoArg(p unsafe.Pointer, t reflect.Type) reflect.Value {
 	case reflect.Uint64:
 		return reflect.ValueOf(uint64(*((*C.uint64_t)(p))))
 
+	case reflect.Uintptr:
+		return reflect.ValueOf(uintptr(*((*C.size_t)(p))))
+
 	case reflect.Float32:
 		return reflect.ValueOf(float32(*((*C.float)(p))))
 
@@ -344,6 +366,11 @@ func makeRetType(v reflect.Value) Type {
 
 	case reflect.Uint64:
 		return UInt64
+
+	case reflect.Uintptr:
+		// Must be what size_t is defined to, on darwin and linux it is a typedef
+		// to 'unsigned long int'.
+		return ULong
 
 	case reflect.Float32:
 		return Float
@@ -399,6 +426,10 @@ func makeRetValue(v reflect.Value) unsafe.Pointer {
 
 	case reflect.Uint64:
 		x := C.uint64_t(v.Uint())
+		return unsafe.Pointer(&x)
+
+	case reflect.Uintptr:
+		x := C.size_t(v.Uint())
 		return unsafe.Pointer(&x)
 
 	case reflect.Float32:
@@ -470,6 +501,9 @@ func makeArgType(v reflect.Value) Type {
 	case reflect.Uint64:
 		return UInt64
 
+	case reflect.Uintptr:
+		return ULong
+
 	case reflect.Float32:
 		return Float
 
@@ -506,6 +540,10 @@ func makeArgValue(v reflect.Value) unsafe.Pointer {
 		x := C.int64_t(v.Int())
 		return unsafe.Pointer(&x)
 
+	case reflect.Uint:
+		x := C.uint(v.Uint())
+		return unsafe.Pointer(&x)
+
 	case reflect.Uint8:
 		x := C.uint8_t(v.Uint())
 		return unsafe.Pointer(&x)
@@ -522,6 +560,10 @@ func makeArgValue(v reflect.Value) unsafe.Pointer {
 		x := C.uint64_t(v.Uint())
 		return unsafe.Pointer(&x)
 
+	case reflect.Uintptr:
+		x := C.size_t(v.Uint())
+		return unsafe.Pointer(&x)
+
 	case reflect.Float32:
 		x := C.float(v.Float())
 		return unsafe.Pointer(&x)
@@ -531,14 +573,17 @@ func makeArgValue(v reflect.Value) unsafe.Pointer {
 		return unsafe.Pointer(&x)
 
 	case reflect.String:
-		return unsafe.Pointer(C.CString(v.String()))
+		x := C.CString(v.String())
+		return unsafe.Pointer(&x)
 
 	case reflect.Slice, reflect.Ptr, reflect.UnsafePointer:
-		return unsafe.Pointer(v.Pointer())
+		x := v.Pointer()
+		return unsafe.Pointer(&x)
 
 	case reflect.Interface:
 		if v.IsNil() {
-			return nil
+			x := unsafe.Pointer(nil)
+			return unsafe.Pointer(&x)
 		}
 	}
 
@@ -577,6 +622,9 @@ func setRetValue(v reflect.Value, p unsafe.Pointer) {
 
 	case reflect.Uint64:
 		v.SetUint(uint64(*(*C.uint64_t)(p)))
+
+	case reflect.Uintptr:
+		v.SetUint(uint64(*(*C.size_t)(p)))
 
 	case reflect.Float32:
 		v.SetFloat(float64(*(*C.float)(p)))
@@ -623,6 +671,9 @@ func setRetPointer(p unsafe.Pointer, v reflect.Value) {
 
 	case reflect.Uint64:
 		*((*C.uint64_t)(p)) = C.uint64_t(v.Uint())
+
+	case reflect.Uintptr:
+		*((*C.size_t)(p)) = C.size_t(v.Uint())
 
 	case reflect.Float32:
 		*((*C.float)(p)) = C.float(v.Float())
