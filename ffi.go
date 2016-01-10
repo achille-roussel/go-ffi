@@ -5,11 +5,11 @@ package ffi
 //
 // typedef void (*function)(void);
 //
-// extern void GoClosureCallback(ffi_cif *, void *, void **, void *);
 import "C"
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"unsafe"
 )
 
@@ -129,7 +129,7 @@ func (cif Interface) Call(fptr unsafe.Pointer, ret unsafe.Pointer, args ...unsaf
 		va = &args[0]
 	}
 
-	_, err = C.ffi_call(&cif.ffi_cif, (C.function)(fptr), ret, va)
+	_, err = C.ffi_call(&cif.ffi_cif, C.function(fptr), ret, va)
 	return
 }
 
@@ -475,10 +475,6 @@ func (fn *function) Pointer() uintptr {
 	return uintptr(fn.fptr)
 }
 
-func (fn *function) destroy() {
-	C.ffi_closure_free(fn.mptr)
-}
-
 func Closure(v interface{}) Function {
 	switch f := v.(type) {
 	case Function:
@@ -499,16 +495,47 @@ func Closure(v interface{}) Function {
 	return makeClosure(fv, ft)
 }
 
+func makeClosure(fv reflect.Value, ft reflect.Type) *function {
+	fn := &function{
+		call: fv,
+	}
+
+	var rt Type
+	var at []Type
+
+	if n := ft.NumOut(); n != 0 {
+		rt = makeRetType(reflect.New(ft.Out(0)))
+	}
+
+	if n := ft.NumIn(); n != 0 {
+		at = make([]Type, n)
+
+		for i := 0; i != n; i++ {
+			at[i] = makeArgType(reflect.Zero(ft.In(i)))
+		}
+	}
+
+	fn.Interface = MustPrepare(rt, at...)
+
+	if err := constructClosure(fn); err != nil {
+		panic(err)
+	}
+
+	runtime.SetFinalizer(fn, destroyClosure)
+	return fn
+}
+
 //export GoClosureCallback
 func GoClosureCallback(cif *C.ffi_cif, ret unsafe.Pointer, args *unsafe.Pointer, data unsafe.Pointer) {
 	fn := (*function)(data)
 	fv := fn.call
+	ft := fv.Type()
 
-	ac := fv.NumIn()
+	ac := ft.NumIn()
 	av := make([]reflect.Value, ac)
 
 	for i := 0; i != ac; i++ {
-		av[i] = makeGoArg(*args, fv.In(i))
+		av[i] = makeGoArg(*args, ft.In(i))
 		args = nextUnsafePointer(args)
 	}
 

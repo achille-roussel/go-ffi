@@ -271,6 +271,51 @@ func TestCallInvalidArgumentTypeWrongValue(t *testing.T) {
 	t.Error("unreachable: function argument should have caused ffi.Call to panic")
 }
 
+func TestCreateClosure(t *testing.T) {
+	abs := Closure(func(x int) int {
+		if x < 0 {
+			return -x
+		}
+		return x
+	})
+
+	if abs == nil {
+		t.Error("closure:", abs)
+	} else if abs.Pointer() == 0 {
+		t.Error("closure: null pointer")
+	}
+}
+
+func TestCallClosure(t *testing.T) {
+	val := 0
+
+	abs := Closure(func(x int) int {
+		val = 42
+
+		if x < 0 {
+			return -x
+		}
+
+		return x
+	})
+
+	res := 0
+	arg := -1
+	err := Call(unsafe.Pointer(abs.Pointer()), &res, arg)
+
+	if err != nil {
+		t.Error("closure:", err)
+	}
+
+	if res != 1 {
+		t.Error("closure: invalid returned value:", res)
+	}
+
+	if val != 42 {
+		t.Error("closure: invalid value of out-of-scope variable:", val)
+	}
+}
+
 func init() {
 	var err error
 
