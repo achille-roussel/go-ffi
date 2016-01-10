@@ -94,17 +94,7 @@ type Interface struct {
 	args []Type
 }
 
-func MustPrepare(ret Type, args ...Type) (cif Interface) {
-	var err error
-
-	if cif, err = Prepare(ret, args...); err != nil {
-		panic(err)
-	}
-
-	return
-}
-
-func Prepare(ret Type, args ...Type) (cif Interface, err error) {
+func Prepare(ret Type, args ...Type) (cif Interface) {
 	cif.ffi_ret = ret.ffi_type
 	cif.ret = ret
 	cif.args = args
@@ -121,7 +111,7 @@ func Prepare(ret Type, args ...Type) (cif Interface, err error) {
 	}
 
 	if status := Status(C.ffi_prep_cif(&cif.ffi_cif, C.FFI_DEFAULT_ABI, C.uint(argc), cif.ffi_ret, cif.ffi_args)); status != OK {
-		err = status
+		panic(status)
 	}
 
 	return
@@ -166,7 +156,7 @@ func Call(fptr unsafe.Pointer, ret interface{}, args ...interface{}) (err error)
 	argt := makeArgTypes(varg)
 	argv := makeArgValues(varg)
 
-	err = MustPrepare(rett, argt...).Call(fptr, retv, argv...)
+	Prepare(rett, argt...).Call(fptr, retv, argv...)
 
 	setRetValue(vret, retv)
 	return
@@ -253,7 +243,7 @@ func makeClosure(fv reflect.Value, ft reflect.Type) *function {
 		}
 	}
 
-	fn.Interface = MustPrepare(rt, at...)
+	fn.Interface = Prepare(rt, at...)
 
 	if err := constructClosure(fn); err != nil {
 		panic(err)

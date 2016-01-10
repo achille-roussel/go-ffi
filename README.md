@@ -28,6 +28,34 @@ func main() {
 Hello World!
 ```
 
+Calling Go Functions
+--------------------
+
+go-ffi also provides a mechanism for generating pointers that can be used to
+call Go functions from compiled C code.  
+Here's an example showing how this is done:
+```go
+package main
+
+import (
+       "fmt"
+       "strconv"
+       "unsafe"
+
+       "github.com/achille-roussel/go-ffi"
+)
+
+func main() {
+     itoa := ffi.Closure(strconv.Itoa)
+     fptr := itoa.Pointer()
+     repr := ""
+
+     ffi.Call(unsafe.Pointer(fptr), &repr, 42)
+
+     fmt.Println(repr)
+}
+```
+
 Type Conversions
 ----------------
 

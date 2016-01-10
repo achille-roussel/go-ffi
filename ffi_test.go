@@ -160,24 +160,15 @@ func TestStatusErrorDefault(t *testing.T) {
 }
 
 func TestPrepareVoid(t *testing.T) {
-	if _, err := Prepare(Void); err != nil {
-		t.Error(err)
-	}
+	Prepare(Void)
 }
 
 func TestPrepareAndCall(t *testing.T) {
-	var cif Interface
-	var err error
-
-	if cif, err = Prepare(Int, Int); err != nil {
-		t.Error("prepare:", err)
-		return
-	}
-
+	cif := Prepare(Int, Int)
 	ret := 0
 	arg := -1
 
-	if err = cif.Call(unsafe.Pointer(abs), unsafe.Pointer(&ret), unsafe.Pointer(&arg)); err != nil {
+	if err := cif.Call(unsafe.Pointer(abs), unsafe.Pointer(&ret), unsafe.Pointer(&arg)); err != nil {
 		t.Error("call:", err)
 		return
 	}
@@ -189,7 +180,7 @@ func TestPrepareAndCall(t *testing.T) {
 }
 
 func TestInterfaceString(t *testing.T) {
-	if s := MustPrepare(Void, Pointer, Int).String(); s != "void(*)(void *, int)" {
+	if s := Prepare(Void, Pointer, Int).String(); s != "void(*)(void *, int)" {
 		t.Error("invalid string representation of call interface:", s)
 	}
 }
@@ -498,7 +489,7 @@ func BenchmarkCallingAbsViaCgo(b *testing.B) {
 }
 
 func BenchmarkCallingAbsViaInterface(b *testing.B) {
-	cif := MustPrepare(Int, Int)
+	cif := Prepare(Int, Int)
 
 	for i, n := 0, b.N; i != n; i++ {
 		arg := -i
