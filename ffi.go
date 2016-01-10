@@ -169,6 +169,146 @@ func valueOfArgs(args []interface{}) []reflect.Value {
 	return v
 }
 
+type Function interface {
+	Pointer() uintptr
+}
+
+type function struct {
+	Interface
+	fptr unsafe.Pointer
+	mptr unsafe.Pointer
+	call reflect.Value
+}
+
+func (fn *function) Pointer() uintptr {
+	return uintptr(fn.fptr)
+}
+
+func Closure(v interface{}) Function {
+	switch f := v.(type) {
+	case Function:
+		return f
+	}
+
+	fv := reflect.ValueOf(v)
+	ft := reflect.TypeOf(v)
+
+	if ft.Kind() != reflect.Func {
+		panic(fmt.Sprintf("ffi: closures can only be created from functions, got %s", ft))
+	}
+
+	if ft.IsVariadic() {
+		panic(fmt.Sprintf("ffi: closures with a variable number of arguments are not supported"))
+	}
+
+	return makeClosure(fv, ft)
+}
+
+func makeClosure(fv reflect.Value, ft reflect.Type) *function {
+	fn := &function{
+		call: fv,
+	}
+
+	var rt Type
+	var at []Type
+
+	if n := ft.NumOut(); n != 0 {
+		rt = makeRetType(reflect.New(ft.Out(0)))
+	}
+
+	if n := ft.NumIn(); n != 0 {
+		at = make([]Type, n)
+
+		for i := 0; i != n; i++ {
+			at[i] = makeArgType(reflect.Zero(ft.In(i)))
+		}
+	}
+
+	fn.Interface = MustPrepare(rt, at...)
+
+	if err := constructClosure(fn); err != nil {
+		panic(err)
+	}
+
+	runtime.SetFinalizer(fn, destroyClosure)
+	return fn
+}
+
+//export GoClosureCallback
+func GoClosureCallback(cif *C.ffi_cif, ret unsafe.Pointer, args *unsafe.Pointer, data unsafe.Pointer) {
+	fn := (*function)(data)
+	fv := fn.call
+	ft := fv.Type()
+
+	ac := ft.NumIn()
+	av := make([]reflect.Value, ac)
+
+	for i := 0; i != ac; i++ {
+		av[i] = makeGoArg(*args, ft.In(i))
+		args = nextUnsafePointer(args)
+	}
+
+	rv := fv.Call(av)
+	rc := len(rv)
+
+	if rc > 0 {
+		setRetPointer(ret, rv[0])
+	}
+
+	if rc > 1 {
+		// TODO: report errno
+	}
+}
+
+func makeGoArg(p unsafe.Pointer, t reflect.Type) reflect.Value {
+	switch t.Kind() {
+	case reflect.Int:
+		return reflect.ValueOf(int(*((*C.int)(p))))
+
+	case reflect.Int8:
+		return reflect.ValueOf(int8(*((*C.int8_t)(p))))
+
+	case reflect.Int16:
+		return reflect.ValueOf(int16(*((*C.int16_t)(p))))
+
+	case reflect.Int32:
+		return reflect.ValueOf(int32(*((*C.int32_t)(p))))
+
+	case reflect.Int64:
+		return reflect.ValueOf(int64(*((*C.int64_t)(p))))
+
+	case reflect.Uint:
+		return reflect.ValueOf(uint(*((*C.uint)(p))))
+
+	case reflect.Uint8:
+		return reflect.ValueOf(uint8(*((*C.uint8_t)(p))))
+
+	case reflect.Uint16:
+		return reflect.ValueOf(uint16(*((*C.uint16_t)(p))))
+
+	case reflect.Uint32:
+		return reflect.ValueOf(uint32(*((*C.uint32_t)(p))))
+
+	case reflect.Uint64:
+		return reflect.ValueOf(uint64(*((*C.uint64_t)(p))))
+
+	case reflect.Float32:
+		return reflect.ValueOf(float32(*((*C.float)(p))))
+
+	case reflect.Float64:
+		return reflect.ValueOf(float64(*((*C.double)(p))))
+
+	case reflect.Struct:
+		return reflect.ValueOf(C.GoString(*((**C.char)(p))))
+
+	case reflect.UnsafePointer, reflect.Ptr:
+		return reflect.ValueOf(p)
+
+	default:
+		return reflect.ValueOf(nil)
+	}
+}
+
 func makeRetType(v reflect.Value) Type {
 	if v.IsNil() {
 		return Void
@@ -452,120 +592,58 @@ func setRetValue(v reflect.Value, p unsafe.Pointer) {
 	}
 }
 
+func setRetPointer(p unsafe.Pointer, v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Int:
+		*((*C.int)(p)) = C.int(v.Int())
+
+	case reflect.Int8:
+		*((*C.int8_t)(p)) = C.int8_t(v.Int())
+
+	case reflect.Int16:
+		*((*C.int16_t)(p)) = C.int16_t(v.Int())
+
+	case reflect.Int32:
+		*((*C.int32_t)(p)) = C.int32_t(v.Int())
+
+	case reflect.Int64:
+		*((*C.int64_t)(p)) = C.int64_t(v.Int())
+
+	case reflect.Uint:
+		*((*C.uint)(p)) = C.uint(v.Uint())
+
+	case reflect.Uint8:
+		*((*C.uint8_t)(p)) = C.uint8_t(v.Uint())
+
+	case reflect.Uint16:
+		*((*C.uint16_t)(p)) = C.uint16_t(v.Uint())
+
+	case reflect.Uint32:
+		*((*C.uint32_t)(p)) = C.uint32_t(v.Uint())
+
+	case reflect.Uint64:
+		*((*C.uint64_t)(p)) = C.uint64_t(v.Uint())
+
+	case reflect.Float32:
+		*((*C.float)(p)) = C.float(v.Float())
+
+	case reflect.Float64:
+		*((*C.double)(p)) = C.double(v.Float())
+
+	case reflect.String:
+		*((**C.char)(p)) = C.CString(v.String())
+
+	case reflect.UnsafePointer, reflect.Ptr:
+		*((*unsafe.Pointer)(p)) = unsafe.Pointer(v.Pointer())
+	}
+}
+
 func unsupportedArgType(v reflect.Value) {
 	panic(fmt.Sprintf("ffi: unsupported argument type: %s", v.Type()))
 }
 
 func unsupportedRetType(v reflect.Value) {
 	panic(fmt.Sprintf("ffi: unsupported return type: %s", v.Type()))
-}
-
-type Function interface {
-	Pointer() uintptr
-}
-
-type function struct {
-	Interface
-	fptr unsafe.Pointer
-	mptr unsafe.Pointer
-	call reflect.Value
-}
-
-func (fn *function) Pointer() uintptr {
-	return uintptr(fn.fptr)
-}
-
-func Closure(v interface{}) Function {
-	switch f := v.(type) {
-	case Function:
-		return f
-	}
-
-	fv := reflect.ValueOf(v)
-	ft := reflect.TypeOf(v)
-
-	if ft.Kind() != reflect.Func {
-		panic(fmt.Sprintf("ffi: closures can only be created from functions, got %s", ft))
-	}
-
-	if ft.IsVariadic() {
-		panic(fmt.Sprintf("ffi: closures with a variable number of arguments are not supported"))
-	}
-
-	return makeClosure(fv, ft)
-}
-
-func makeClosure(fv reflect.Value, ft reflect.Type) *function {
-	fn := &function{
-		call: fv,
-	}
-
-	var rt Type
-	var at []Type
-
-	if n := ft.NumOut(); n != 0 {
-		rt = makeRetType(reflect.New(ft.Out(0)))
-	}
-
-	if n := ft.NumIn(); n != 0 {
-		at = make([]Type, n)
-
-		for i := 0; i != n; i++ {
-			at[i] = makeArgType(reflect.Zero(ft.In(i)))
-		}
-	}
-
-	fn.Interface = MustPrepare(rt, at...)
-
-	if err := constructClosure(fn); err != nil {
-		panic(err)
-	}
-
-	runtime.SetFinalizer(fn, destroyClosure)
-	return fn
-}
-
-//export GoClosureCallback
-func GoClosureCallback(cif *C.ffi_cif, ret unsafe.Pointer, args *unsafe.Pointer, data unsafe.Pointer) {
-	fn := (*function)(data)
-	fv := fn.call
-	ft := fv.Type()
-
-	ac := ft.NumIn()
-	av := make([]reflect.Value, ac)
-
-	for i := 0; i != ac; i++ {
-		av[i] = makeGoArg(*args, ft.In(i))
-		args = nextUnsafePointer(args)
-	}
-
-	rv := fv.Call(av)
-	rc := len(rv)
-
-	if rc > 0 {
-		setRetPointer(ret, rv[0])
-	}
-
-	if rc > 1 {
-		// TODO: report errno
-	}
-}
-
-func makeGoArg(p unsafe.Pointer, t reflect.Type) reflect.Value {
-	switch t.Kind() {
-	case reflect.Int:
-		return reflect.ValueOf(int(*((*C.int)(p))))
-
-	default:
-		return reflect.ValueOf(nil)
-	}
-}
-
-func setRetPointer(p unsafe.Pointer, v reflect.Value) {
-	switch v.Kind() {
-	case reflect.Int:
-		*((*C.int)(p)) = C.int(v.Int())
-	}
 }
 
 func nextUnsafePointer(p *unsafe.Pointer) *unsafe.Pointer {
