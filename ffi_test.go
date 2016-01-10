@@ -490,3 +490,42 @@ func symbol(lib dl.Library, name string) (addr uintptr) {
 
 	return
 }
+
+func BenchmarkCallingAbsViaCgo(b *testing.B) {
+	for i, n := 0, b.N; i != n; i++ {
+		ffi_test_abs__(-i)
+	}
+}
+
+func BenchmarkCallingAbsViaInterface(b *testing.B) {
+	cif := MustPrepare(Int, Int)
+
+	for i, n := 0, b.N; i != n; i++ {
+		arg := -i
+		res := 0
+		cif.Call(unsafe.Pointer(abs), unsafe.Pointer(&res), unsafe.Pointer(&arg))
+	}
+}
+
+func BenchmarkCallingAbsViaCall(b *testing.B) {
+	for i, n := 0, b.N; i != n; i++ {
+		arg := -1
+		res := 0
+		Call(unsafe.Pointer(abs), &res, arg)
+	}
+}
+
+func BenchmarkCallingAbsViaClosure(b *testing.B) {
+	abs := Closure(func(n int) int {
+		if n < 0 {
+			return -n
+		}
+		return n
+	})
+
+	for i, n := 0, b.N; i != n; i++ {
+		arg := -i
+		res := 0
+		abs.Call(unsafe.Pointer(&res), unsafe.Pointer(&arg))
+	}
+}

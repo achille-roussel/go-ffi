@@ -5,6 +5,10 @@ package ffi
 //
 // typedef void (*function)(void);
 //
+// static int ffi_test_abs__(int n) {
+//   return n < 0 ? -n : n;
+// }
+//
 import "C"
 import (
 	"fmt"
@@ -189,6 +193,8 @@ func valueOfArgs(args []interface{}) []reflect.Value {
 }
 
 type Function interface {
+	Call(unsafe.Pointer, ...unsafe.Pointer) error
+
 	Pointer() uintptr
 }
 
@@ -197,6 +203,10 @@ type function struct {
 	fptr unsafe.Pointer
 	mptr unsafe.Pointer
 	call reflect.Value
+}
+
+func (fn *function) Call(ret unsafe.Pointer, args ...unsafe.Pointer) error {
+	return fn.Interface.Call(fn.fptr, ret, args...)
 }
 
 func (fn *function) Pointer() uintptr {
@@ -699,4 +709,8 @@ func unsupportedRetType(v reflect.Value) {
 
 func nextUnsafePointer(p *unsafe.Pointer) *unsafe.Pointer {
 	return (*unsafe.Pointer)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + uintptr(unsafe.Sizeof(*p))))
+}
+
+func ffi_test_abs__(n int) int {
+	return int(C.ffi_test_abs__(C.int(n)))
 }
