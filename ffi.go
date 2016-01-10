@@ -342,7 +342,7 @@ func makeGoArg(p unsafe.Pointer, t reflect.Type) reflect.Value {
 }
 
 func makeRetType(v reflect.Value) Type {
-	if v.IsNil() {
+	if !v.IsValid() {
 		return Void
 	}
 
@@ -397,7 +397,7 @@ func makeRetType(v reflect.Value) Type {
 }
 
 func makeRetValue(v reflect.Value) unsafe.Pointer {
-	if v.IsNil() {
+	if !v.IsValid() {
 		return nil
 	}
 
@@ -602,6 +602,10 @@ func makeArgValue(v reflect.Value) unsafe.Pointer {
 }
 
 func setRetValue(v reflect.Value, p unsafe.Pointer) {
+	if !v.IsValid() {
+		return
+	}
+
 	switch v = v.Elem(); v.Kind() {
 	case reflect.Int:
 		v.SetInt(int64(*((*C.int)(p))))
