@@ -484,7 +484,7 @@ func load(name string) (lib dl.Library, err error) {
 func symbol(lib dl.Library, name string) (addr uintptr) {
 	var err error
 
-	if addr, err = libc.Symbol(name); err != nil {
+	if addr, err = lib.Symbol(name); err != nil {
 		panic(err)
 	}
 
