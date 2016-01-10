@@ -4,6 +4,8 @@ package ffi
 // #include <stdint.h>
 //
 // typedef void (*function)(void);
+//
+// extern void GoClosureCallback(ffi_cif *, void *, void **, void *);
 import "C"
 import (
 	"fmt"
@@ -456,4 +458,89 @@ func unsupportedArgType(v reflect.Value) {
 
 func unsupportedRetType(v reflect.Value) {
 	panic(fmt.Sprintf("ffi: unsupported return type: %s", v.Type()))
+}
+
+type Function interface {
+	Pointer() uintptr
+}
+
+type function struct {
+	Interface
+	fptr unsafe.Pointer
+	mptr unsafe.Pointer
+	call reflect.Value
+}
+
+func (fn *function) Pointer() uintptr {
+	return uintptr(fn.fptr)
+}
+
+func (fn *function) destroy() {
+	C.ffi_closure_free(fn.mptr)
+}
+
+func Closure(v interface{}) Function {
+	switch f := v.(type) {
+	case Function:
+		return f
+	}
+
+	fv := reflect.ValueOf(v)
+	ft := reflect.TypeOf(v)
+
+	if ft.Kind() != reflect.Func {
+		panic(fmt.Sprintf("ffi: closures can only be created from functions, got %s", ft))
+	}
+
+	if ft.IsVariadic() {
+		panic(fmt.Sprintf("ffi: closures with a variable number of arguments are not supported"))
+	}
+
+	return makeClosure(fv, ft)
+}
+
+//export GoClosureCallback
+func GoClosureCallback(cif *C.ffi_cif, ret unsafe.Pointer, args *unsafe.Pointer, data unsafe.Pointer) {
+	fn := (*function)(data)
+	fv := fn.call
+
+	ac := fv.NumIn()
+	av := make([]reflect.Value, ac)
+
+	for i := 0; i != ac; i++ {
+		av[i] = makeGoArg(*args, fv.In(i))
+		args = nextUnsafePointer(args)
+	}
+
+	rv := fv.Call(av)
+	rc := len(rv)
+
+	if rc > 0 {
+		setRetPointer(ret, rv[0])
+	}
+
+	if rc > 1 {
+		// TODO: report errno
+	}
+}
+
+func makeGoArg(p unsafe.Pointer, t reflect.Type) reflect.Value {
+	switch t.Kind() {
+	case reflect.Int:
+		return reflect.ValueOf(int(*((*C.int)(p))))
+
+	default:
+		return reflect.ValueOf(nil)
+	}
+}
+
+func setRetPointer(p unsafe.Pointer, v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Int:
+		*((*C.int)(p)) = C.int(v.Int())
+	}
+}
+
+func nextUnsafePointer(p *unsafe.Pointer) *unsafe.Pointer {
+	return (*unsafe.Pointer)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + uintptr(unsafe.Sizeof(*p))))
 }
