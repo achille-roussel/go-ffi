@@ -55,6 +55,9 @@ func main() {
      fmt.Println(repr)
 }
 ```
+```
+42
+```
 
 Type Conversions
 ----------------
