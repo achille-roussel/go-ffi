@@ -228,7 +228,7 @@ func makeClosure(fv reflect.Value, ft reflect.Type) *function {
 		call: fv,
 	}
 
-	var rt Type
+	var rt = Void
 	var at []Type
 
 	if n := ft.NumOut(); n != 0 {
