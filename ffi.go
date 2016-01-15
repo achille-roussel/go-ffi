@@ -320,10 +320,10 @@ func makeGoArg(p unsafe.Pointer, t reflect.Type) reflect.Value {
 	case reflect.Float64:
 		return reflect.ValueOf(float64(*((*C.double)(p))))
 
-	case reflect.Struct:
+	case reflect.String:
 		return reflect.ValueOf(C.GoString(*((**C.char)(p))))
 
-	case reflect.UnsafePointer, reflect.Ptr:
+	case reflect.UnsafePointer:
 		return reflect.ValueOf(p)
 
 	default:
@@ -378,7 +378,10 @@ func makeRetType(v reflect.Value) Type {
 	case reflect.Float64:
 		return Double
 
-	case reflect.String, reflect.Ptr, reflect.UnsafePointer:
+	case reflect.String:
+		return Pointer
+
+	case reflect.UnsafePointer:
 		return Pointer
 	}
 
@@ -440,7 +443,15 @@ func makeRetValue(v reflect.Value) unsafe.Pointer {
 		x := C.double(v.Float())
 		return unsafe.Pointer(&x)
 
-	case reflect.String, reflect.Ptr, reflect.UnsafePointer:
+	case reflect.String:
+		x := unsafe.Pointer(nil)
+		return unsafe.Pointer(&x)
+
+	case reflect.UnsafePointer:
+		x := unsafe.Pointer(nil)
+		return unsafe.Pointer(&x)
+
+	case reflect.Ptr:
 		x := unsafe.Pointer(nil)
 		return unsafe.Pointer(&x)
 	}
@@ -510,8 +521,22 @@ func makeArgType(v reflect.Value) Type {
 	case reflect.Float64:
 		return Double
 
-	case reflect.String, reflect.Slice, reflect.Ptr, reflect.UnsafePointer, reflect.Interface:
+	case reflect.String:
 		return Pointer
+
+	case reflect.UnsafePointer:
+		return Pointer
+
+	case reflect.Ptr:
+		return Pointer
+
+	case reflect.Slice:
+		return Pointer
+
+	case reflect.Interface:
+		if v.IsNil() {
+			return Pointer
+		}
 	}
 
 	unsupportedArgType(v)
@@ -576,7 +601,15 @@ func makeArgValue(v reflect.Value) unsafe.Pointer {
 		x := C.CString(v.String())
 		return unsafe.Pointer(&x)
 
-	case reflect.Slice, reflect.Ptr, reflect.UnsafePointer:
+	case reflect.UnsafePointer:
+		x := v.Pointer()
+		return unsafe.Pointer(&x)
+
+	case reflect.Ptr:
+		x := v.Pointer()
+		return unsafe.Pointer(&x)
+
+	case reflect.Slice:
 		x := v.Pointer()
 		return unsafe.Pointer(&x)
 
@@ -639,7 +672,7 @@ func setRetValue(v reflect.Value, p unsafe.Pointer) {
 	case reflect.String:
 		v.SetString(C.GoString(*(**C.char)(p)))
 
-	case reflect.UnsafePointer, reflect.Ptr:
+	case reflect.UnsafePointer:
 		v.SetPointer(*(*unsafe.Pointer)(p))
 	}
 }
@@ -688,7 +721,7 @@ func setRetPointer(p unsafe.Pointer, v reflect.Value) {
 	case reflect.String:
 		*((**C.char)(p)) = C.CString(v.String())
 
-	case reflect.UnsafePointer, reflect.Ptr:
+	case reflect.UnsafePointer:
 		*((*unsafe.Pointer)(p)) = unsafe.Pointer(v.Pointer())
 	}
 }
