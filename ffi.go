@@ -2,6 +2,7 @@ package ffi
 
 // #include <ffi.h>
 // #include <stdint.h>
+// #include <stdlib.h>
 //
 // typedef void (*function)(void);
 //
@@ -156,10 +157,21 @@ func Call(fptr unsafe.Pointer, ret interface{}, args ...interface{}) (err error)
 	argt := makeArgTypes(varg)
 	argv := makeArgValues(varg)
 
+	defer freeArgValues(argv, varg)
+
 	Prepare(rett, argt...).Call(fptr, retv, argv...)
 
 	setRetValue(vret, retv)
 	return
+}
+
+func freeArgValues(varg []unsafe.Pointer, args []reflect.Value) {
+	for i, a := range args {
+		switch a.Kind() {
+		case reflect.String:
+			C.free(*(*unsafe.Pointer)(varg[i]))
+		}
+	}
 }
 
 func valueOfRet(ret interface{}) reflect.Value {
